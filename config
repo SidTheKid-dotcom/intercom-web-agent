@@ -1,0 +1,266 @@
+College Management Lightning Application — Exact Exam Steps
+
+Problem Statement:
+Develop a College Management Lightning Application to manage Student and Faculty records with validation rules.
+
+STEP 1 — CREATE STUDENT OBJECT
+
+Go:
+
+Setup → Object Manager → Create → Custom Object
+
+Fill:
+
+Field	Value
+Label	Student
+Object Name	Student
+
+Save.
+
+STEP 2 — CREATE STUDENT FIELDS
+
+Go:
+
+Student → Fields & Relationships → New
+
+Create:
+
+Field Name	Type
+Student Name	Text
+Roll Number	Number
+Marks	Number
+Email	Email
+STEP 3 — CREATE STUDENT VALIDATION RULES
+
+Go:
+
+Student → Validation Rules → New
+Marks Validation
+
+Rule Name:
+
+MarksValidation
+
+Formula:
+
+OR(
+    Marks__c < 0,
+    Marks__c > 100
+)
+
+Error:
+
+Marks must be between 0 and 100
+Roll Number Validation
+
+Formula:
+
+Roll_Number__c <= 0
+
+Error:
+
+Roll Number must be greater than 0
+Email Validation
+
+Formula:
+
+NOT(
+    CONTAINS(
+        Email__c,
+        "@"
+    )
+)
+
+Error:
+
+Email must contain @
+Student Name Validation
+
+Formula:
+
+ISBLANK(Student_Name__c)
+
+Error:
+
+Student Name cannot be blank
+STEP 4 — CREATE FACULTY OBJECT
+
+Go:
+
+Setup → Object Manager → Create → Custom Object
+
+Fill:
+
+Field	Value
+Label	Faculty
+Object Name	Faculty
+
+Save.
+
+STEP 5 — CREATE FACULTY FIELDS
+
+Go:
+
+Faculty → Fields & Relationships → New
+
+Create:
+
+Field Name	Type
+Faculty Name	Text
+Faculty ID	Number
+Salary	Number
+Department	Picklist
+Joining Date	Date
+STEP 6 — ADD PICKLIST VALUES
+
+For Department field:
+
+Add:
+
+IT
+CS
+EXTC
+Mechanical
+
+Save.
+
+STEP 7 — FACULTY VALIDATION RULES
+
+Go:
+
+Faculty → Validation Rules → New
+Faculty Name Validation
+
+Formula:
+
+LEN(Faculty_Name__c) < 3
+
+Error:
+
+Faculty name must contain at least 3 characters
+Faculty ID Validation
+
+Formula:
+
+Faculty_ID__c <= 0
+
+Error:
+
+Faculty ID must be greater than 0
+Unique Faculty ID
+
+Go:
+
+Faculty_ID__c field
+
+Tick:
+
+Unique
+
+Save.
+
+Salary Validation
+
+Formula:
+
+OR(
+    Salary__c < 10000,
+    Salary__c > 500000
+)
+
+Error:
+
+Salary must be between 10000 and 500000
+Joining Date Validation
+
+Formula:
+
+Joining_Date__c > TODAY()
+
+Error:
+
+Joining date cannot be future date
+STEP 8 — CREATE STUDENT TAB
+
+Go:
+
+Setup → Tabs → New Custom Object Tab
+
+Choose:
+
+Student
+
+Choose any icon.
+
+Save.
+
+STEP 9 — CREATE FACULTY TAB
+
+Same process:
+
+Setup → Tabs → New Custom Object Tab
+
+Choose:
+
+Faculty
+
+Save.
+
+STEP 10 — CREATE LIGHTNING APP
+
+Go:
+
+Setup → App Manager → New Lightning App
+
+Name:
+
+College Management App
+
+Next → Next.
+
+STEP 11 — ADD NAVIGATION ITEMS
+
+Add:
+
+Students
+Faculties
+
+Move to right side.
+
+Finish.
+
+STEP 12 — ENABLE PROFILE ACCESS
+
+Go:
+
+App Manager → College Management App → Edit
+
+Open:
+
+User Profiles
+
+Enable:
+
+System Administrator
+
+Save.
+
+STEP 13 — OPEN APP
+
+Top-left:
+
+9 dots → App Launcher
+
+Search:
+
+College Management App
+
+Open it.
+
+STEP 14 — TEST VALIDATIONS
+STUDENT TESTS
+Invalid Input	Expected Result
+Marks = 150	validation error
+Roll Number = -1	validation error
+Email without @	validation error
+Blank student name	validation error
