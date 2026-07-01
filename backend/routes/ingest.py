@@ -1,152 +1,203 @@
-from typing import Optional, List
-from collections import deque
-from urllib.parse import urljoin, urlparse
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-import logging
-from playwright.async_api import async_playwright, Browser
-from services.embedder import chunk_text, embed_texts
-from services.retriever import store_chunks, check_exists
-from services.sqlite_store import upsert_ingest, init_db as init_sqlite
+from typing import Any, Dict, List, Optional
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from services.crawler import service as crawl_service
+from services.url_ingest import ingest_url_list
 
 router = APIRouter()
 
 
-async def fetch_page_playwright(url: str, browser: Browser):
-    """Fetch a URL using Playwright and return (text, links). Returns (None, []) on failure."""
-    try:
-        page = await browser.new_page()
-        # Use domcontentloaded instead of networkidle. Many modern sites have constant background polling
-        # which prevents networkidle from ever firing, causing 30s timeouts.
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        # Give it a short explicit wait for any initial JS to render
-        await page.wait_for_timeout(2000)
-
-        result = await page.evaluate('''() => {
-            const text = document.body ? document.body.innerText : "";
-            const links = Array.from(document.querySelectorAll("a[href]")).map(a => a.href);
-            return {text, links};
-        }''')
-
-        await page.close()
-
-        text = result["text"]
-        links = result["links"]
-
-        # Strip fragments and keep only http/https links
-        valid_links = [l.split("#")[0] for l in links if l.startswith("http")]
-
-        return text, valid_links
-    except Exception as e:
-        logger.error(f"Playwright error fetching {url}: {e}")
-        return None, []
+class CookiePayload(BaseModel):
+    name: str
+    value: str
+    domain: Optional[str] = None
+    path: Optional[str] = "/"
+    secure: Optional[bool] = False
+    httpOnly: Optional[bool] = False
+    sameSite: Optional[str] = None
+    expirationDate: Optional[float] = None
 
 
-async def crawl(start_url: str, max_pages: int = 1) -> List[str]:
-    """BFS crawl of same-domain pages using async Playwright."""
-    logger.info(f"Starting BFS crawl. Target start URL: {start_url}, max_pages limit: {max_pages}")
-    root_domain = urlparse(start_url).netloc
-    visited = set()
-    queue = deque([start_url])
-    all_texts = []
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-
-        while queue and len(visited) < max_pages:
-            url = queue.popleft()
-            if url in visited:
-                continue
-            visited.add(url)
-
-            text, links = await fetch_page_playwright(url, browser)
-            if text and text.strip():
-                logger.info(f"Successfully scraped: {url} (Extracted {len(text)} characters, {len(links)} links)")
-                all_texts.append(f"[Page: {url}]\n{text}")
-            else:
-                logger.warning(f"Failed to scrape text or page empty: {url}")
-
-            for link in links:
-                if link not in visited and urlparse(link).netloc == root_domain:
-                    queue.append(link)
-
-        await browser.close()
-
-    return all_texts
+class SiteIngestRequest(BaseModel):
+    start_url: str
+    title: Optional[str] = None
+    page_text: Optional[str] = None
+    user_agent: str
+    cookies: List[CookiePayload] = Field(default_factory=list)
+    force_refresh: bool = False
 
 
-class IngestRequest(BaseModel):
-    url: str
-    page_text: Optional[str] = None   # If omitted, backend fetches the URL itself
-    max_pages: Optional[int] = 5     # Set > 1 to crawl linked pages on same domain
-    title: Optional[str] = None      # Page title (from extension); stored in SQLite
-
-
-class IngestResponse(BaseModel):
+class SiteIngestResponse(BaseModel):
+    job_id: Optional[str] = None
+    site_key: str
     status: str
-    chunk_count: int
-    pages_scraped: int
-    source: str  # "extension" or "backend_fetch"
 
 
-@router.post("/ingest", response_model=IngestResponse)
-async def ingest(request: IngestRequest):
-    """Ingest a web page into ChromaDB.
+class JobStatusResponse(BaseModel):
+    job_id: str
+    site_key: str
+    status: str
+    pages_discovered: int = 0
+    pages_crawled: int = 0
+    pdfs_discovered: int = 0
+    pdfs_processed: int = 0
+    chunks_written: int = 0
+    failures: int = 0
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
 
-    - If page_text is provided (from Chrome extension), use it directly.
-    - If not, the backend fetches the URL itself.
-    - Set max_pages > 1 to crawl and ingest linked same-domain pages too.
-    """
-    source = "extension"
-    pages_scraped = 1
 
+class BrowserCrawlStartRequest(BaseModel):
+    start_url: str
+    title: Optional[str] = None
+    force_refresh: bool = False
+
+
+class BrowserCrawlPageRequest(BaseModel):
+    job_id: str
+    url: str
+    title: Optional[str] = None
+    page_text: str
+    discovered_from: Optional[str] = None
+    crawl_depth: int = 0
+    discovered_count: Optional[int] = None
+
+
+class BrowserCrawlFinishRequest(BaseModel):
+    job_id: str
+    status: str = "completed"
+    error_summary: Optional[str] = None
+    discovered_count: Optional[int] = None
+
+
+class UrlListIngestRequest(BaseModel):
+    urls: List[str]
+    title: Optional[str] = None
+    user_agent: str = "IntercomDemoIngest/1.0"
+    cookies: List[CookiePayload] = Field(default_factory=list)
+    force_refresh: bool = True
+
+
+class UrlListIngestResponse(BaseModel):
+    job_id: str
+    site_key: str
+    status: str
+    html_pages: int = 0
+    pdf_count: int = 0
+    chunks_written: int = 0
+    failures: int = 0
+
+
+@router.post("/ingest/site", response_model=SiteIngestResponse)
+async def ingest_site(request: SiteIngestRequest):
+    if not request.start_url or not request.start_url.strip():
+        raise HTTPException(status_code=400, detail="Missing start_url")
+
+    result = await crawl_service.start_site_crawl(
+        start_url=request.start_url,
+        title=request.title,
+        page_text=request.page_text,
+        user_agent=request.user_agent,
+        cookies=[cookie.dict(exclude_none=True) for cookie in request.cookies],
+        force_refresh=request.force_refresh,
+    )
+    return SiteIngestResponse(**result)
+
+
+@router.post("/ingest/urls", response_model=UrlListIngestResponse)
+async def ingest_urls(request: UrlListIngestRequest):
+    if not request.urls:
+        raise HTTPException(status_code=400, detail="Missing urls")
+    try:
+        result = await ingest_url_list(
+            urls=request.urls,
+            title=request.title,
+            user_agent=request.user_agent,
+            cookies=[cookie.dict(exclude_none=True) for cookie in request.cookies],
+            force_refresh=request.force_refresh,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return UrlListIngestResponse(**result)
+
+
+@router.post("/ingest/browser-crawl/start", response_model=SiteIngestResponse)
+async def start_browser_crawl(request: BrowserCrawlStartRequest):
+    if not request.start_url or not request.start_url.strip():
+        raise HTTPException(status_code=400, detail="Missing start_url")
+
+    result = await crawl_service.start_browser_crawl(
+        start_url=request.start_url,
+        title=request.title,
+        force_refresh=request.force_refresh,
+    )
+    return SiteIngestResponse(**result)
+
+
+@router.post("/ingest/browser-crawl/page")
+async def ingest_browser_crawl_page(request: BrowserCrawlPageRequest):
+    if not request.job_id:
+        raise HTTPException(status_code=400, detail="Missing job_id")
+    if not request.url:
+        raise HTTPException(status_code=400, detail="Missing url")
     if not request.page_text or not request.page_text.strip():
-        source = "backend_fetch"
-        max_pages = max(5, request.max_pages or 5)
-        page_texts = await crawl(request.url, max_pages=max_pages)
-        pages_scraped = len(page_texts)
+        raise HTTPException(status_code=400, detail="Missing page_text")
 
-        if not page_texts:
-            raise HTTPException(status_code=502, detail=f"Could not scrape any content from {request.url}")
+    try:
+        return await crawl_service.ingest_browser_page(
+            job_id=request.job_id,
+            url=request.url,
+            title=request.title,
+            page_text=request.page_text,
+            discovered_from=request.discovered_from,
+            crawl_depth=request.crawl_depth,
+            discovered_count=request.discovered_count,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-        logger.info(f"Finished crawling. Scraped {pages_scraped} pages successfully.")
-        
-        # Combine all page texts into one corpus for chunking
-        combined_text = "\n\n===PAGE BREAK===\n\n".join(page_texts)
-    else:
-        logger.info("Received raw page text via extension directly. Skipping crawler.")
-        combined_text = request.page_text
 
-    logger.info(f"Total corpus text size to chunk: {len(combined_text)} characters")
+@router.post("/ingest/browser-crawl/finish", response_model=SiteIngestResponse)
+async def finish_browser_crawl(request: BrowserCrawlFinishRequest):
+    if not request.job_id:
+        raise HTTPException(status_code=400, detail="Missing job_id")
+    try:
+        result = await crawl_service.finish_browser_crawl(
+            job_id=request.job_id,
+            status=request.status,
+            error_summary=request.error_summary,
+            discovered_count=request.discovered_count,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return SiteIngestResponse(**result)
 
-    # Chunk, embed, store
-    chunks = chunk_text(combined_text)
-    
-    if not chunks:
-        raise HTTPException(status_code=400, detail="No chunks generated from text")
-        
-    logger.info(f"Text divided into {len(chunks)} overlapping chunks.")
 
-    embeddings = embed_texts(chunks)
-    count = store_chunks(request.url, chunks, embeddings)
+@router.get("/ingest/site/{job_id}", response_model=JobStatusResponse)
+async def get_site_job(job_id: str):
+    job = crawl_service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Crawl job not found")
 
-    init_sqlite()
-    upsert_ingest(
-        request.url, request.title, count, source
+    return JobStatusResponse(
+        job_id=job["job_id"],
+        site_key=job["site_key"],
+        status=job["status"],
+        pages_discovered=int(job.get("pages_discovered") or 0),
+        pages_crawled=int(job.get("pages_crawled") or 0),
+        pdfs_discovered=int(job.get("pdfs_discovered") or 0),
+        pdfs_processed=int(job.get("pdfs_processed") or 0),
+        chunks_written=int(job.get("chunks_written") or 0),
+        failures=int(job.get("failures") or 0),
+        started_at=job.get("started_at"),
+        finished_at=job.get("finished_at"),
     )
 
-    return IngestResponse(
-        status="ok",
-        chunk_count=count,
-        pages_scraped=pages_scraped,
-        source=source,
-    )
 
 @router.get("/check")
-async def check_url(url: str):
-    """Check if a URL has already been ingested in the DB."""
-    return check_exists(url)
-
+async def check_url(url: str) -> Dict[str, Any]:
+    if not url:
+        raise HTTPException(status_code=400, detail="Missing url")
+    return crawl_service.check_site(url)

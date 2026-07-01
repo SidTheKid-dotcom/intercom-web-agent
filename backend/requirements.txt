@@ -5,3 +5,8 @@ google-genai
 python-dotenv
 playwright
 groq
+httpx
+pymupdf
+pillow
+pytesseract
+tldextract

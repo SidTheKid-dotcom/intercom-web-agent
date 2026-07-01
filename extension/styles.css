@@ -27,6 +27,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 14px 16px;
   background: #18181b;
   border-bottom: 1px solid #27272a;
@@ -36,6 +37,15 @@ header {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 header h1,
@@ -98,7 +108,7 @@ header .app-brand {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
@@ -122,6 +132,53 @@ header .app-brand {
   box-shadow: none;
 }
 
+.btn-live-agent,
+.btn-live-agent-stop,
+.btn-live-crawl {
+  background: #27272a;
+  color: #d4d4d8;
+  border: 1px solid #3f3f46;
+  padding: 8px 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.btn-live-agent:hover,
+.btn-live-agent-stop:hover,
+.btn-live-crawl:hover {
+  border-color: #22c55e;
+  color: #f4f4f5;
+}
+
+.btn-live-agent--active,
+.btn-live-crawl--active {
+  background: #052e16;
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+.btn-live-agent:disabled,
+.btn-live-agent-stop:disabled,
+.btn-live-crawl:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.btn-live-agent-stop {
+  border-color: #7f1d1d;
+  color: #fecaca;
+}
+
+.btn-live-agent-stop:hover {
+  border-color: #ef4444;
+}
+
 /* ─── Page Info Bar ───────────────────────────────────── */
 
 .page-info {
@@ -133,6 +190,49 @@ header .app-brand {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.live-agent-trace {
+  border-bottom: 1px solid #27272a;
+  background: rgba(24, 24, 27, 0.92);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 148px;
+  overflow-y: auto;
+}
+
+.live-agent-trace.hidden {
+  display: none;
+}
+
+.live-agent-trace__item {
+  display: grid;
+  grid-template-columns: 58px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.live-agent-trace__phase {
+  color: #c4b5fd;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.live-agent-trace__detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-agent-trace__meta {
+  color: #71717a;
+  font-variant-numeric: tabular-nums;
 }
 
 .hidden {
@@ -223,14 +323,86 @@ header .app-brand {
   max-width: 95%;
 }
 
-.message-action {
-  margin-top: 8px;
+.message-voice-btn {
+  margin-top: 10px;
+  background: transparent;
+  color: #c4b5fd;
+  border: 1px solid rgba(196, 181, 253, 0.25);
+  border-radius: 999px;
   padding: 6px 10px;
-  background: rgba(99, 102, 241, 0.12);
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  border-radius: 6px;
   font-size: 11px;
-  color: #818cf8;
+  cursor: pointer;
+}
+
+.message-voice-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.message-sources {
+  margin-top: 12px;
+}
+
+.message-sources__summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: #c4b5fd;
+  list-style: none;
+}
+
+.message-sources__summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-sources__list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.source-card {
+  background: rgba(24, 24, 27, 0.9);
+  border: 1px solid rgba(63, 63, 70, 0.9);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.source-card--pdf {
+  border-color: rgba(251, 146, 60, 0.4);
+  background: rgba(66, 32, 6, 0.35);
+}
+
+.source-card__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f4f4f5;
+  margin-bottom: 4px;
+}
+
+.source-card__meta {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+  margin-bottom: 6px;
+}
+
+.source-card__snippet {
+  font-size: 11px;
+  color: #d4d4d8;
+  line-height: 1.5;
+}
+
+.source-card__open {
+  margin-top: 10px;
+  background: transparent;
+  color: #f4f4f5;
+  border: 1px solid #52525b;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
 }
 
 /* ─── Intro: minimal + canvas particles + orbital mark ─ */
@@ -469,6 +641,37 @@ header .app-brand {
   padding: 12px 16px;
   background: #18181b;
   border-top: 1px solid #27272a;
+}
+
+.btn-voice {
+  background: #27272a;
+  color: #e4e4e7;
+  border: 1px solid #3f3f46;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.btn-voice:hover {
+  border-color: #6366f1;
+}
+
+.btn-voice:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-voice--recording {
+  background: #7f1d1d;
+  border-color: #ef4444;
+  color: #fff;
 }
 
 #message-input {

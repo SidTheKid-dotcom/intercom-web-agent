@@ -10,5 +10,11 @@ chroma_data/
 # SQLite
 backend/data/
 
+# Backups
+backups/
+
+# Logs
+logs/
+
 # OS
 .DS_Store

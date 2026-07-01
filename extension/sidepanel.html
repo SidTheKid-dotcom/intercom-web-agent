@@ -47,27 +47,43 @@
           <h2 class="app-brand">Intercom</h2>
           <span id="status" class="status status-idle">Not activated</span>
         </div>
-        <button id="activate-btn" class="btn-activate">⚡ Activate</button>
+        <div class="header-actions">
+          <button id="live-crawl-btn" class="btn-live-crawl" type="button">
+            Live Crawl
+          </button>
+          <button id="live-agent-btn" class="btn-live-agent" type="button">
+            Live Agent
+          </button>
+          <button id="live-agent-stop-btn" class="btn-live-agent-stop hidden" type="button">
+            Stop
+          </button>
+          <button id="activate-btn" class="btn-activate">⚡ Activate</button>
+        </div>
       </header>
 
       <div id="page-info" class="page-info hidden">
         <span id="page-title" class="page-title"></span>
       </div>
 
+      <div id="live-agent-trace" class="live-agent-trace hidden" aria-live="polite"></div>
+
       <div id="messages" class="messages">
         <div class="welcome-message">
           <div class="welcome-icon">💬</div>
           <p>
-            Click <strong>Activate</strong> to index this page, then ask
-            <strong>Intercom</strong> anything about it.
+            Click <strong>Activate</strong> to crawl this site, including linked
+            pages and PDFs, then ask <strong>Intercom</strong> anything about it.
           </p>
         </div>
       </div>
 
       <div id="chat-input-area" class="chat-input-area">
+        <button id="voice-btn" class="btn-voice" type="button" disabled aria-label="Record voice message">
+          🎙
+        </button>
         <textarea
           id="message-input"
-          placeholder="Ask about this page..."
+          placeholder="Ask about this site..."
           rows="1"
           disabled
         ></textarea>

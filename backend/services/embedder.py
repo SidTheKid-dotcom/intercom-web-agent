@@ -1,4 +1,5 @@
 import os
+import time
 from typing import List
 from google import genai
 import logging
@@ -9,8 +10,12 @@ logger = logging.getLogger(__name__)
 EMBEDDING_MODEL = "gemini-embedding-001"
 CHUNK_SIZE = 2000  # characters (~500 tokens)
 CHUNK_OVERLAP = 200
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "5"))
+EMBEDDING_MIN_INTERVAL_SECONDS = float(os.getenv("EMBEDDING_MIN_INTERVAL_SECONDS", "10"))
+EMBEDDING_RETRY_SECONDS = [20, 40, 70]
 
 _client = None
+_last_embedding_request_at = 0.0
 
 
 def _get_client():
@@ -40,7 +45,15 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
     return chunks
 
 
-import time
+def _pace_embedding_request() -> None:
+    global _last_embedding_request_at
+    elapsed = time.monotonic() - _last_embedding_request_at
+    delay = EMBEDDING_MIN_INTERVAL_SECONDS - elapsed
+    if delay > 0:
+        logger.info("Sleeping %.1fs to pace embedding requests...", delay)
+        time.sleep(delay)
+    _last_embedding_request_at = time.monotonic()
+
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
     """Embed a list of texts using Gemini gemini-embedding-001."""
@@ -52,7 +65,7 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     # Gemini embedding API supports batching
     # Process in much smaller batches. Free tier rejects massive 35k-token payloads in one request.
     all_embeddings = []
-    batch_size = 10  # Reduced from 100
+    batch_size = max(1, EMBEDDING_BATCH_SIZE)
 
     num_batches = (len(texts) + batch_size - 1) // batch_size
 
@@ -63,22 +76,25 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
 
         batch_num = (i // batch_size) + 1
         logger.info(f"Sending batch {batch_num}/{num_batches}: {len(batch)} chunks, {total_chars} chars, ~{estimated_tokens} tokens")
-        try:
-            result = _get_client().models.embed_content(
-                model=EMBEDDING_MODEL,
-                contents=batch,
-            )
-            all_embeddings.extend([e.values for e in result.embeddings])
-            
-            logger.info(f"Successfully received {len(batch)} embeddings. Total embedded: {len(all_embeddings)}/{len(texts)}")
-            
-            # Avoid hitting free-tier RPM rate limits if there are multiple batches
-            if len(texts) > batch_size and (i + batch_size) < len(texts):
-                logger.info("Sleeping for 8 seconds to respect Gemini Free Tier TPM/RPM limits...")
-                time.sleep(8)
-        except Exception as e:
-            logger.error(f"Error embedding batch {batch_num}: {e}")
-            raise e
+        for attempt in range(len(EMBEDDING_RETRY_SECONDS) + 1):
+            try:
+                _pace_embedding_request()
+                result = _get_client().models.embed_content(
+                    model=EMBEDDING_MODEL,
+                    contents=batch,
+                )
+                all_embeddings.extend([e.values for e in result.embeddings])
+                logger.info(f"Successfully received {len(batch)} embeddings. Total embedded: {len(all_embeddings)}/{len(texts)}")
+                break
+            except Exception as e:
+                is_rate_limited = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+                if is_rate_limited and attempt < len(EMBEDDING_RETRY_SECONDS):
+                    delay = EMBEDDING_RETRY_SECONDS[attempt]
+                    logger.warning("Embedding rate limit on batch %s. Sleeping %ss before retry...", batch_num, delay)
+                    time.sleep(delay)
+                    continue
+                logger.error(f"Error embedding batch {batch_num}: {e}")
+                raise e
 
     logger.info(f"Completed embedding {len(all_embeddings)} total chunks.")
     return all_embeddings

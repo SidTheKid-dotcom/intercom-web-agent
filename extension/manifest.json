@@ -3,7 +3,7 @@
   "name": "Intercom",
   "version": "1.0.0",
   "description": "Chat with any webpage using AI. Extension: HTML, CSS, JS. Backend: SQLite + ChromaDB + API.",
-  "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
+  "permissions": ["activeTab", "scripting", "storage", "sidePanel", "cookies", "tabs"],
   "host_permissions": ["<all_urls>"],
   "side_panel": {
     "default_path": "sidepanel.html"
